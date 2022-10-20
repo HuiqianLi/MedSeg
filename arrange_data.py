@@ -8,17 +8,17 @@ table = [1]*256
 table[0] = 0
 
 # --img
-target_list = ['010101','010102','010103','010201','010202','020101','020102','020103','020201',\
-    '020301','020302','020303','020304','020401','020402','020403','020404',\
-    '020501','020502','020503','020504','020601','020602','020603','020604']
+# target_list = ['010101','010102','010103','010201','010202','020101','020102','020103','020201',\
+#     '020301','020302','020303','020304','020401','020402','020403','020404',\
+#     '020501','020502','020503','020504','020601','020602','020603','020604']
 # --video
 # test
 # target_list = ['030204','030208','020801']
 # target_list = ['030204','030207','030208','020801','030303','030308','030309','030312']
 # train
-# target_list = ['020701','020702','020704','020901','020902','020904','020905','021001',\
-#     '030101','030102','030103','040101','040201','040401','040501','040601','040603','040604','040605',\
-#     '040701','040801','040901','041001']
+target_list = ['020701','020702','020704','020901','020902','020904','020905','021001',\
+    '030101','030102','030103','040101','040201','040401','040501','040601','040603','040604','040605',\
+    '040701','040801','040901','041001']
 
 def arrange_img():
     # /data/dataset/endoscopy/0101/image1/image47.jpg
@@ -252,20 +252,37 @@ def onlyPos(sou_path):
             print(num)
 
 # 训练图片转换成8位图
-def resize_train(sou_path):
+def trans_img(sou_path):
     num = 0
     path = osp.join(sou_path)
     for file in os.listdir(path):
         label = Image.open(osp.join(path, file)) 
+        label = label.convert('L') # 转换为8位
         label = label.point(table, '1')
         label = label.convert('L') # 转换为8位
         label.save(osp.join(path, file))
         num += 1
         print(num)
 
+# 训练图片转换成8位图
+def trans_train(sou_path):
+    num = 0
+    posneg = '/GT/'
+    for target in target_list:
+        path = osp.join(sou_path, target)
+        path = path + posneg
+        for file in os.listdir(path):
+            label = Image.open(osp.join(path, file)) 
+            label = label.convert('L') # 24位转换为8位
+            label = label.point(table, '1')
+            label = label.convert('L') # 24位转换为8位
+            label.save(osp.join(path, file))
+            num += 1
+            print(num)
+
 if __name__ == '__main__':
     # arrange_img()
-    sou_path = "/data/dataset/lhq/PNSNet/dataset/IMG-TrainSet/GT"
-    resize_train(sou_path)
+    sou_path = "/data/dataset/lhq/PNSNet/dataset/VPSW-TrainSet/ours/Train"
+    trans_train(sou_path)
     # img = r"/data/dataset/lhq/PNSNet/dataset/VPS-TestSet/hardrep"
     # onlyPos(img)
