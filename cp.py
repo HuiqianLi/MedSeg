@@ -211,18 +211,63 @@ def mosaic(image_list, mask_list):
     new_mask[cuty:, cutx:] = mask_datas[3][cuty:, cutx:]
     
     return new_mask, new_image
-    
+
+# FDA傅里叶域适应
+def low_freq_mutate_np( amp_src, amp_trg, L=0.1 ):
+    a_src = np.fft.fftshift( amp_src, axes=(-2, -1) )
+    a_trg = np.fft.fftshift( amp_trg, axes=(-2, -1) )
+
+    _, h, w = a_src.shape
+    b = (  np.floor(np.amin((h,w))*L)  ).astype(int)
+    c_h = np.floor(h/2.0).astype(int)
+    c_w = np.floor(w/2.0).astype(int)
+
+    h1 = c_h-b
+    h2 = c_h+b+1
+    w1 = c_w-b
+    w2 = c_w+b+1
+
+    a_src[:,h1:h2,w1:w2] = a_trg[:,h1:h2,w1:w2]
+    a_src = np.fft.ifftshift( a_src, axes=(-2, -1) )
+    return a_src
+
+def FDA_source_to_target_np( src_img, trg_img, L=0.1 ):
+    # exchange magnitude
+    # input: src_img, trg_img
+
+    src_img_np = src_img #.cpu().numpy()
+    trg_img_np = trg_img #.cpu().numpy()
+
+    # get fft of both source and target
+    fft_src_np = np.fft.fft2( src_img_np, axes=(-2, -1) )
+    fft_trg_np = np.fft.fft2( trg_img_np, axes=(-2, -1) )
+
+    # extract amplitude and phase of both ffts
+    amp_src, pha_src = np.abs(fft_src_np), np.angle(fft_src_np)
+    amp_trg, pha_trg = np.abs(fft_trg_np), np.angle(fft_trg_np)
+
+    # mutate the amplitude part of source with target
+    amp_src_ = low_freq_mutate_np( amp_src, amp_trg, L=L )
+
+    # mutated fft of source
+    fft_src_ = amp_src_ * np.exp( 1j * pha_src )
+
+    # get the mutated image
+    src_in_trg = np.fft.ifft2( fft_src_, axes=(-2, -1) )
+    src_in_trg = np.real(src_in_trg)
+
+    return src_in_trg
 
 if __name__ == '__main__':
-    img = '/data/dataset/lhq/PNSNet/dataset/VPS-TrainSet/ours/Train/010101/Frame/image00047.jpg'
-    label = '/data/dataset/lhq/PNSNet/dataset/VPS-TrainSet/ours/Train/010101/GT/image00047.png'
-    img_ = '/data/dataset/lhq/PNSNet/dataset/VPS-TrainSet/ours/Train/010102/Frame/image00333.jpg'
-    label_ = '/data/dataset/lhq/PNSNet/dataset/VPS-TrainSet/ours/Train/010102/GT/image00333.png'
-    out = '/data/dataset/lhq/PNSp/test'
+    img = '/data/dataset/lhq/PNSNet/dataset/VPS-TrainSet/ours/Train/040401/Frame/040401_image03310.png'
+    label = '/data/dataset/lhq/PNSNet/dataset/VPS-TrainSet/ours/Train/040401/GT/040401_image03310.png'
+    img_ = '/data/dataset/lhq/PNSNet/dataset/VPS-TrainSet/ours/Train/020701/Frame/xmc1_image00005.png'
+    label_ = '//data/dataset/lhq/PNSNet/dataset/VPS-TrainSet/ours/Train/020701/GT/xmc1_image00005.png'
+    out = '/data/dataset/lhq/PNSNet/test'
 
     mask_src, img_src, mask_main, img_main =  np.asarray(Image.open(label), dtype=np.uint8), cv2.imread(img), np.asarray(Image.open(label_), dtype=np.uint8), cv2.imread(img_)
     
-    # 数据增强-交换颜色
+    # 数据增强CP-交换颜色，可注释
     # img_src = cv2.cvtColor(img_src, cv2.COLOR_BGR2LAB)
     # img_main = cv2.cvtColor(img_main, cv2.COLOR_BGR2LAB)
     # mean , std  = img_src.mean(axis=(0,1), keepdims=True), img_src.std(axis=(0,1), keepdims=True)
@@ -230,11 +275,26 @@ if __name__ == '__main__':
     # img_src = np.uint8((img_src-mean)/std*std2+mean2)
     # img_main = cv2.cvtColor(img_main, cv2.COLOR_LAB2BGR)
     # img_src = cv2.cvtColor(img_src, cv2.COLOR_LAB2BGR)
-    
-    # mask, img = copy_paste(mask_src, img_src, mask_main, img_main, lsj=True)
-    image_list = [cv2.imread(img)] * 4
-    mask_list = [np.asarray(Image.open(label), dtype=np.uint8)] * 4
-    mask, img = mosaic(image_list, mask_list)
+
+    # 数据增强CP-FDA，可注释
+    img_src = img_src.astype(np.float32)
+    img_main = img_main.astype(np.float32)
+    img_src = img_src.transpose((2, 0, 1))
+    img_main = img_main.transpose((2, 0, 1))
+    img_src = FDA_source_to_target_np( img_src, img_main, L=0.001 )
+    img_src = img_src.transpose((1,2,0))
+    img_main = img_main.transpose((1,2,0))
+    cv2.imwrite(out+'/img_src.jpg', img_src.astype(np.float32))
+    img_src = img_src.astype(np.uint8)
+    img_main = img_main.astype(np.uint8)
+
+    # copy-paste，可选
+    mask, img = copy_paste(mask_src, img_src, mask_main, img_main, lsj=False)
+
+    # mosaic，可选
+    # image_list = [cv2.imread(img)] * 4
+    # mask_list = [np.asarray(Image.open(label), dtype=np.uint8)] * 4
+    # mask, img = mosaic(image_list, mask_list)
 
     cv2.imwrite(out+'/00.jpg', img)
     cv2.imwrite(out+'/00.png', mask)
